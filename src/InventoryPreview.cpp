@@ -5,13 +5,19 @@
 #include "PreviewMarkerMath.h"
 
 #include "RE/B/BSInvMarker.h"
+#include "RE/E/EffectSetting.h"
 #include "RE/I/InventoryEntryData.h"
 #include "RE/I/InventoryMenu.h"
 #include "RE/I/ItemList.h"
+#include "RE/S/SpellItem.h"
 #include "RE/T/TESBipedModelForm.h"
 #include "RE/T/TESBoundObject.h"
+#include "RE/T/TESForm.h"
 #include "RE/T/TESModel.h"
 #include "RE/T/TESObjectARMO.h"
+#include "RE/T/TESObjectBOOK.h"
+#include "RE/T/TESObjectWEAP.h"
+#include "RE/T/TESShout.h"
 #include "RE/U/UI.h"
 
 #include <string>
@@ -54,6 +60,54 @@ namespace {
         return {};
     }
 
+    [[nodiscard]] const RE::TESBoundObject* GetMenuDisplayObject(const RE::TESForm& a_item) {
+        switch (a_item.GetFormType()) {
+            case RE::FormType::MagicEffect:
+                if (const auto* effect = a_item.As<RE::EffectSetting>()) {
+                    return effect->GetMenuDisplayObject();
+                }
+                break;
+            case RE::FormType::Spell:
+                if (const auto* spell = a_item.As<RE::SpellItem>()) {
+                    return spell->GetMenuDisplayObject();
+                }
+                break;
+            case RE::FormType::Shout:
+                if (const auto* shout = a_item.As<RE::TESShout>()) {
+                    return shout->GetMenuDisplayObject();
+                }
+                break;
+            default: break;
+        }
+
+        return nullptr;
+    }
+
+    [[nodiscard]] const RE::TESBoundObject* GetInventoryPreviewModelObject(const RE::TESForm* a_item) {
+        if (!a_item) {
+            return nullptr;
+        }
+
+        switch (a_item->GetFormType()) {
+            case RE::FormType::MagicEffect:
+            case RE::FormType::Spell:
+            case RE::FormType::Shout:       return GetMenuDisplayObject(*a_item);
+            case RE::FormType::Weapon:
+                if (const auto* weapon = a_item->As<RE::TESObjectWEAP>()) {
+                    return weapon->firstPersonModelObject;
+                }
+                break;
+            case RE::FormType::Book:
+                if (const auto* book = a_item->As<RE::TESObjectBOOK>()) {
+                    return book->inventoryModel;
+                }
+                break;
+            default: return a_item->As<RE::TESBoundObject>();
+        }
+
+        return nullptr;
+    }
+
     [[nodiscard]] std::string ResolveModelPath(
         const RE::TESBoundObject* a_modelObject,
         const RE::TESBoundObject* a_item
@@ -63,7 +117,7 @@ namespace {
         }
 
         if (a_modelObject != a_item) {
-            return GetModelPath(a_item);
+            return GetModelPath(GetInventoryPreviewModelObject(a_item));
         }
 
         return {};
@@ -202,7 +256,7 @@ void ApplyInventoryMarkerWithOverrides(
 }
 
 std::optional<std::string> GetSelectedInventoryModelPath() {
-    auto path = NormalizeModelPath(GetModelPath(GetSelectedInventoryObject()));
+    auto path = NormalizeModelPath(GetModelPath(GetInventoryPreviewModelObject(GetSelectedInventoryObject())));
     if (path.empty()) {
         return std::nullopt;
     }

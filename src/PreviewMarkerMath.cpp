@@ -1,10 +1,12 @@
 #include "PreviewMarkerMath.h"
 
 #include <cmath>
+#include <numbers>
 
 namespace {
 constexpr float DEGREES_PER_TURN = 360.0F;
-constexpr float MARKER_UNITS_PER_TURN = 6553.6F;
+constexpr float RADIANS_PER_DEGREE = std::numbers::pi_v<float> / 180.0F;
+constexpr float MARKER_UNITS_PER_RADIAN = 1000.0F;
 }
 
 float NormalizeDegrees(const float a_degrees) noexcept {
@@ -18,13 +20,9 @@ float NormalizeDegrees(const float a_degrees) noexcept {
 
 std::uint16_t RotationDegreesToMarkerValue(const float a_degrees) noexcept {
     const float normalized = NormalizeDegrees(a_degrees);
-    auto markerUnits = static_cast<std::uint32_t>(
-        std::floor((normalized * (MARKER_UNITS_PER_TURN / DEGREES_PER_TURN)) + 0.5F)
+    const auto markerUnits = static_cast<std::uint32_t>(
+        std::round(normalized * RADIANS_PER_DEGREE * MARKER_UNITS_PER_RADIAN)
     );
-
-    if (static_cast<float>(markerUnits) >= MARKER_UNITS_PER_TURN) {
-        markerUnits = 0;
-    }
 
     return static_cast<std::uint16_t>(markerUnits);
 }
