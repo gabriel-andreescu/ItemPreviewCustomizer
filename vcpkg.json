@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "item-preview-customizer",
+  "version-string": "0.1.0",
+  "description": "Customizes item preview zoom and rotation - SKSE plugin for Skyrim",
+  "homepage": "https://github.com/gabriel-andreescu/ItemPreviewCustomizer",
+  "license": "GPL-3.0-only",
+  "dependencies": [
+    "spdlog",
+    "glaze",
+    "catch2",
+    "directxtk",
+    "rapidcsv"
+  ],
+  "builtin-baseline": "edffab1bcd2cb5b8c17d6ba34d5651ea0bf82979"
+}
