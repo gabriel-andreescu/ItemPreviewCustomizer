@@ -1,8 +1,8 @@
 [size=4][color=#00ffff]OVERVIEW[/color][/size]
-SKSE plugin for adjusting item preview zoom and rotation through JSON files.
+SKSE plugin that allows you to manually adjust item preview zoom and rotation through JSON files without touching the nif files.
 
 [size=4][color=#00ffff]CONFIGURATION[/color][/size]
-Add JSON rule files directly in Data\SKSE\Plugins\ItemPreviewCustomizer.
+Add JSON rule files directly in [i]Data\SKSE\Plugins\ItemPreviewCustomizer[/i].
 Each file contains an array of rules. Rules match mesh paths case-insensitively, accept / or \, and support * wildcards. Example:
 
 [code]
@@ -19,22 +19,23 @@ Each file contains an array of rules. Rules match mesh paths case-insensitively,
 ]
 [/code]
 
-zoom is optional and maps to the mesh root BSInvMarker zoom value.
-rotation is optional and uses degrees. You can set only the axes you want to override.
+[i]zoom[/i] is optional and maps to the mesh root BSInvMarker zoom value.
+[i]rotation[/i] is optional and uses degrees. You can set only the axes you want to override.
 A rule may set zoom, rotation, or both. Rules with neither are ignored.
 
 [size=3][color=#00ffff]Rule priority[/color][/size]
-JSON files in Data\SKSE\Plugins\ItemPreviewCustomizer load alphabetically. Subfolders are not scanned. Rules inside each file load from top to bottom.
+JSON files in [i]Data\SKSE\Plugins\ItemPreviewCustomizer[/i] load alphabetically. Subfolders are not scanned. Rules inside each file load from top to bottom.
 
 For the same mesh path, the last exact rule is used. If there is no exact rule for that mesh, the last matching wildcard rule is used.
 
-Editing existing JSON files: run ReloadIPC, then reopen the inventory. Newly created JSON files require a game restart.
+Editing existing JSON files: run [i]ReloadIPC[/i], then reopen the inventory. Newly created JSON files require a game restart.
 
 Currently only meshes with a root BSInvMarker are supported.
 
 [size=3][color=#00ffff]Console commands[/color][/size]
-ReloadIPC: reloads existing config files from disk.
-CopyIPCPath: copies the selected inventory item model path to the clipboard.
+[i]ReloadIPC[/i]: reloads existing config files from disk.
+[i]CopyIPCPath[/i]: copies a JSON rule for the current inventory preview.
+[i]CopyIPCPath 1[/i]: includes the current preview rotation.
 
 
 [size=4][color=#00ffff]COMPATIBILITY[/color][/size]

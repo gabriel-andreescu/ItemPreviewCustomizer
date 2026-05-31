@@ -17,6 +17,17 @@ class Relocation;
 }
 
 namespace InventoryPreview {
+struct PreviewRotation {
+    float x;
+    float y;
+    float z;
+};
+
+struct CurrentInventoryPreview {
+    std::string modelPath;
+    std::optional<PreviewRotation> rotation;
+};
+
 using ApplyInventoryMarker_t = void(
     RE::Inventory3DManager*,
     RE::TESBoundObject*,
@@ -32,5 +43,5 @@ void ApplyInventoryMarkerWithOverrides(
     RE::NiPointer<RE::NiAVObject>* a_model
 );
 
-[[nodiscard]] std::optional<std::string> GetSelectedInventoryModelPath();
+[[nodiscard]] std::optional<CurrentInventoryPreview> GetCurrentInventoryPreview();
 }

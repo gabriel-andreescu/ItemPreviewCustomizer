@@ -5,7 +5,10 @@
 
 #include <Windows.h>
 
+#include <cmath>
 #include <cstring>
+#include <format>
+#include <string>
 #include <string_view>
 
 namespace ConsoleCommands {
@@ -94,11 +97,100 @@ namespace {
         return true;
     }
 
+    [[nodiscard]] bool ShouldIncludeRotation(RE::SCRIPT_FUNCTION::ScriptData* a_scriptData) {
+        if (!a_scriptData || a_scriptData->numParams == 0) {
+            return false;
+        }
+
+        const auto* chunk = a_scriptData->GetIntegerChunk();
+        return chunk && chunk->GetInteger() != 0;
+    }
+
+    [[nodiscard]] std::string EscapeJsonString(std::string_view a_value) {
+        std::string escaped;
+        escaped.reserve(a_value.size());
+
+        for (const auto ch : a_value) {
+            switch (ch) {
+                case '\\': escaped += R"(\\)"; break;
+                case '"':  escaped += R"(\")"; break;
+                case '\b': escaped += R"(\b)"; break;
+                case '\f': escaped += R"(\f)"; break;
+                case '\n': escaped += R"(\n)"; break;
+                case '\r': escaped += R"(\r)"; break;
+                case '\t': escaped += R"(\t)"; break;
+                default:
+                    if (static_cast<unsigned char>(ch) < 0x20) {
+                        escaped += std::format(
+                            R"(\u{:04x})",
+                            static_cast<unsigned int>(static_cast<unsigned char>(ch))
+                        );
+                    } else {
+                        escaped.push_back(ch);
+                    }
+                    break;
+            }
+        }
+
+        return escaped;
+    }
+
+    [[nodiscard]] std::string FormatRotationDegrees(float a_degrees) {
+        if (std::abs(a_degrees) < 0.0005F || std::abs(a_degrees - 360.0F) < 0.0005F) {
+            a_degrees = 0.0F;
+        }
+
+        auto text = std::format("{:.3f}", a_degrees);
+        while (text.contains('.') && text.ends_with('0')) {
+            text.pop_back();
+        }
+        if (text.ends_with('.')) {
+            text.pop_back();
+        }
+
+        return text == "-0" ? "0" : text;
+    }
+
+    [[nodiscard]] std::string FormatPreviewRule(
+        const InventoryPreview::CurrentInventoryPreview& a_preview,
+        const bool a_includeRotation
+    ) {
+        std::string rule = std::format(
+            "{{\n"
+            "  \"models\": [\"{}\"]",
+            EscapeJsonString(a_preview.modelPath)
+        );
+
+        if (a_includeRotation && a_preview.rotation.has_value()) {
+            rule += std::format(
+                ",\n"
+                "  \"rotation\": {{\n"
+                "    \"x\": {},\n"
+                "    \"y\": {},\n"
+                "    \"z\": {}\n"
+                "  }}",
+                FormatRotationDegrees(a_preview.rotation->x),
+                FormatRotationDegrees(a_preview.rotation->y),
+                FormatRotationDegrees(a_preview.rotation->z)
+            );
+        }
+
+        rule += "\n}";
+        return rule;
+    }
+
     struct CopyPreviewPath {
         constexpr static auto ORIGINAL_COMMAND = "ToggleHeapTracking"sv;
         constexpr static auto LONG_NAME = "CopyIPCPath"sv;
         constexpr static auto SHORT_NAME = "CopyIPCPath"sv;
-        constexpr static auto HELP = "Copy the selected inventory item model path to the clipboard\n"sv;
+        constexpr static auto
+            HELP = "Copy the current inventory preview rule to the clipboard\n(1: include rotation)"sv;
+
+        constexpr static RE::SCRIPT_PARAMETER SCRIPT_PARAMS = {
+            .paramName = "IncludeRotation",
+            .paramType = RE::SCRIPT_PARAM_TYPE::kInt,
+            .optional = true
+        };
 
         static bool Execute(
             const RE::SCRIPT_PARAMETER* a_params,
@@ -111,7 +203,6 @@ namespace {
             std::uint32_t& a_opcodeOffsetPtr
         ) {
             (void)a_params;
-            (void)a_scriptData;
             (void)a_thisObj;
             (void)a_containingObj;
             (void)a_scriptObj;
@@ -120,28 +211,47 @@ namespace {
             (void)a_opcodeOffsetPtr;
 
             auto* console = RE::ConsoleLog::GetSingleton();
-            auto modelPath = InventoryPreview::GetSelectedInventoryModelPath();
-            if (!modelPath) {
-                constexpr auto kNoSelectedModelPathMessage = "No selected inventory item model path available to copy";
+            const auto includeRotation = ShouldIncludeRotation(a_scriptData);
+            const auto preview = InventoryPreview::GetCurrentInventoryPreview();
+            if (!preview) {
+                constexpr auto kNoPreviewModelPathMessage = "No current inventory preview model path available to copy";
                 if (console) {
-                    console->Print(kNoSelectedModelPathMessage);
+                    console->Print(kNoPreviewModelPathMessage);
                 }
-                logger::info("{}", kNoSelectedModelPathMessage);
+                logger::info("{}", kNoPreviewModelPathMessage);
                 return false;
             }
 
-            if (CopyTextToClipboard(*modelPath)) {
+            if (includeRotation && !preview->rotation.has_value()) {
+                constexpr auto kNoPreviewRotationMessage = "No current inventory preview rotation available to copy";
                 if (console) {
-                    console->Print("Copied selected inventory item model path:\n%s", modelPath->c_str());
+                    console->Print(kNoPreviewRotationMessage);
                 }
-                logger::info("Copied selected inventory item model path | path={}", *modelPath);
+                logger::info("{}", kNoPreviewRotationMessage);
+                return false;
+            }
+
+            const auto rule = FormatPreviewRule(*preview, includeRotation);
+            if (CopyTextToClipboard(rule)) {
+                if (console) {
+                    console->Print(
+                        includeRotation ? "Copied current inventory preview rule with rotation:\n%s"
+                                        : "Copied current inventory preview rule:\n%s",
+                        rule.c_str()
+                    );
+                }
+                logger::info(
+                    "Copied current inventory preview rule | path={} | rotation={}",
+                    preview->modelPath,
+                    includeRotation
+                );
                 return false;
             }
 
             if (console) {
-                console->Print("Clipboard copy failed:\n%s", modelPath->c_str());
+                console->Print("Clipboard copy failed:\n%s", rule.c_str());
             }
-            logger::warn("Failed to copy selected inventory item model path to clipboard | path={}", *modelPath);
+            logger::warn("Failed to copy current inventory preview rule to clipboard | path={}", preview->modelPath);
             return false;
         }
     };
@@ -158,7 +268,14 @@ namespace {
         function->shortName = T::SHORT_NAME.data();
         function->helpString = T::HELP.data();
         function->referenceFunction = false;
-        function->SetParameters();
+        if constexpr (requires { T::SCRIPT_PARAMS; }) {
+            // CommonLib exposes SetParameters for native script parameter arrays.
+            // NOLINTNEXTLINE(modernize-avoid-c-arrays)
+            static RE::SCRIPT_PARAMETER params[] = {T::SCRIPT_PARAMS};
+            function->SetParameters(params);
+        } else {
+            function->SetParameters();
+        }
         function->executeFunction = &T::Execute;
         function->conditionFunction = nullptr;
 

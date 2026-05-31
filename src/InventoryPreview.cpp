@@ -6,9 +6,9 @@
 
 #include "RE/B/BSInvMarker.h"
 #include "RE/E/EffectSetting.h"
-#include "RE/I/InventoryEntryData.h"
-#include "RE/I/InventoryMenu.h"
-#include "RE/I/ItemList.h"
+#include "RE/I/Inventory3DManager.h"
+#include "RE/N/NiAVObject.h"
+#include "RE/N/NiPoint3.h"
 #include "RE/S/SpellItem.h"
 #include "RE/T/TESBipedModelForm.h"
 #include "RE/T/TESBoundObject.h"
@@ -18,12 +18,18 @@
 #include "RE/T/TESObjectBOOK.h"
 #include "RE/T/TESObjectWEAP.h"
 #include "RE/T/TESShout.h"
-#include "RE/U/UI.h"
 
+#include <numbers>
 #include <string>
 
 namespace InventoryPreview {
 namespace {
+    constexpr float DEGREES_PER_RADIAN = 180.0F / std::numbers::pi_v<float>;
+
+    [[nodiscard]] float RotationRadiansToDegrees(const float a_radians) noexcept {
+        return NormalizeDegrees(a_radians * DEGREES_PER_RADIAN);
+    }
+
     [[nodiscard]] std::string GetModelPath(const RE::TESModel& a_model) {
         const auto* model = a_model.GetModel();
         return model ? std::string {model} : std::string {};
@@ -108,10 +114,7 @@ namespace {
         return nullptr;
     }
 
-    [[nodiscard]] std::string ResolveModelPath(
-        const RE::TESBoundObject* a_modelObject,
-        const RE::TESBoundObject* a_item
-    ) {
+    [[nodiscard]] std::string ResolveModelPath(const RE::TESBoundObject* a_modelObject, const RE::TESForm* a_item) {
         if (auto path = GetModelPath(a_modelObject); !path.empty()) {
             return path;
         }
@@ -123,22 +126,36 @@ namespace {
         return {};
     }
 
-    [[nodiscard]] RE::InventoryMenu* GetOpenInventoryMenu() {
-        auto* ui = RE::UI::GetSingleton();
-        if (!ui) {
+    [[nodiscard]] const RE::LoadedInventoryModel* GetCurrentLoadedInventoryModel() {
+        auto* manager = RE::Inventory3DManager::GetSingleton();
+        if (!manager) {
             return nullptr;
         }
 
-        auto inventoryMenu = ui->GetMenu<RE::InventoryMenu>();
-        return inventoryMenu.get();
+        const auto& loadedModels = manager->GetRuntimeData().loadedModels;
+        if (loadedModels.empty()) {
+            return nullptr;
+        }
+
+        return &loadedModels.data()[loadedModels.size() - 1];
     }
 
-    [[nodiscard]] RE::TESBoundObject* GetSelectedInventoryObject() {
-        auto* inventoryMenu = GetOpenInventoryMenu();
-        auto* itemList = inventoryMenu ? inventoryMenu->GetRuntimeData().itemList : nullptr;
-        auto* selectedItem = itemList ? itemList->GetSelectedItem() : nullptr;
-        auto* entry = selectedItem ? selectedItem->data.objDesc : nullptr;
-        return entry ? entry->object : nullptr;
+    [[nodiscard]] std::optional<PreviewRotation> GetPreviewRotation(const RE::LoadedInventoryModel& a_model) {
+        const auto* modelRoot = a_model.spModel.get();
+        if (!modelRoot) {
+            return std::nullopt;
+        }
+
+        RE::NiPoint3 radians;
+        if (!modelRoot->local.rotate.ToEulerAnglesXYZ(radians)) {
+            return std::nullopt;
+        }
+
+        return PreviewRotation {
+            .x = RotationRadiansToDegrees(radians.x),
+            .y = RotationRadiansToDegrees(radians.y),
+            .z = RotationRadiansToDegrees(radians.z),
+        };
     }
 
     [[nodiscard]] RE::BSInvMarker* FindInventoryMarker(const RE::NiAVObject& a_modelRoot) {
@@ -255,12 +272,20 @@ void ApplyInventoryMarkerWithOverrides(
     a_original(a_manager, a_item, a_modelObject, a_model);
 }
 
-std::optional<std::string> GetSelectedInventoryModelPath() {
-    auto path = NormalizeModelPath(GetModelPath(GetInventoryPreviewModelObject(GetSelectedInventoryObject())));
+std::optional<CurrentInventoryPreview> GetCurrentInventoryPreview() {
+    const auto* loadedModel = GetCurrentLoadedInventoryModel();
+    if (!loadedModel) {
+        return std::nullopt;
+    }
+
+    auto path = NormalizeModelPath(ResolveModelPath(loadedModel->modelObj, loadedModel->itemBase));
     if (path.empty()) {
         return std::nullopt;
     }
 
-    return path;
+    return CurrentInventoryPreview {
+        .modelPath = std::move(path),
+        .rotation = GetPreviewRotation(*loadedModel),
+    };
 }
 }

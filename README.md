@@ -49,7 +49,8 @@ Currently only meshes with a root `BSInvMarker` are supported.
 ### Console Commands
 
 - `ReloadIPC`: reloads existing config files from disk.
-- `CopyIPCPath`: copies the selected inventory item model path to the clipboard.
+- `CopyIPCPath`: copies a JSON rule for the current inventory preview.
+- `CopyIPCPath 1`: includes the current preview rotation.
 
 ---
 

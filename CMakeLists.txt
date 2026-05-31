@@ -8,7 +8,7 @@ set(VCPKG_INSTALL_OPTIONS "--no-print-usage")
 
 project(
         ItemPreviewCustomizer
-        VERSION 0.1.1
+        VERSION 0.2.0
         DESCRIPTION "Customizes item preview zoom and rotation."
         LANGUAGES CXX
 )
