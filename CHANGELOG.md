@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 - Unreleased
+
+- fix: keep preview customizations active while zooming inventory items
+
 ## 0.2.0 - 2026-05-30
 
 - change: make CopyIPCPath copy a JSON rule and optionally include current preview rotation

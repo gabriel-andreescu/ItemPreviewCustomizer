@@ -173,58 +173,21 @@ namespace {
         return nullptr;
     }
 
-    class MarkerOverrideScope {
-    public:
-        explicit MarkerOverrideScope(RE::BSInvMarker& a_marker)
-            : marker_(a_marker)
-            , original_(
-                  MarkerSnapshot {
-                      .zoom = a_marker.zoom,
-                      .rotationX = a_marker.rotationX,
-                      .rotationY = a_marker.rotationY,
-                      .rotationZ = a_marker.rotationZ,
-                  }
-              ) {}
-
-        MarkerOverrideScope(const MarkerOverrideScope&) = delete;
-        MarkerOverrideScope(MarkerOverrideScope&&) = delete;
-        MarkerOverrideScope& operator=(const MarkerOverrideScope&) = delete;
-        MarkerOverrideScope& operator=(MarkerOverrideScope&&) = delete;
-
-        ~MarkerOverrideScope() {
-            marker_.zoom = original_.zoom;
-            marker_.rotationX = original_.rotationX;
-            marker_.rotationY = original_.rotationY;
-            marker_.rotationZ = original_.rotationZ;
+    void ApplyMarkerOverride(RE::BSInvMarker& a_marker, const PreviewConfig& a_config) {
+        if (a_config.zoom.has_value()) {
+            a_marker.zoom = *a_config.zoom;
         }
 
-        void Apply(const PreviewConfig& a_config) const {
-            if (a_config.zoom.has_value()) {
-                marker_.zoom = *a_config.zoom;
-            }
-
-            if (a_config.rotation.x.has_value()) {
-                marker_.rotationX = RotationDegreesToMarkerValue(*a_config.rotation.x);
-            }
-            if (a_config.rotation.y.has_value()) {
-                marker_.rotationY = RotationDegreesToMarkerValue(*a_config.rotation.y);
-            }
-            if (a_config.rotation.z.has_value()) {
-                marker_.rotationZ = RotationDegreesToMarkerValue(*a_config.rotation.z);
-            }
+        if (a_config.rotation.x.has_value()) {
+            a_marker.rotationX = RotationDegreesToMarkerValue(*a_config.rotation.x);
         }
-
-    private:
-        struct MarkerSnapshot {
-            float zoom;
-            std::uint16_t rotationX;
-            std::uint16_t rotationY;
-            std::uint16_t rotationZ;
-        };
-
-        RE::BSInvMarker& marker_;
-        MarkerSnapshot original_;
-    };
+        if (a_config.rotation.y.has_value()) {
+            a_marker.rotationY = RotationDegreesToMarkerValue(*a_config.rotation.y);
+        }
+        if (a_config.rotation.z.has_value()) {
+            a_marker.rotationZ = RotationDegreesToMarkerValue(*a_config.rotation.z);
+        }
+    }
 }
 
 void ApplyInventoryMarkerWithOverrides(
@@ -258,8 +221,7 @@ void ApplyInventoryMarkerWithOverrides(
         return;
     }
 
-    MarkerOverrideScope markerOverride {*marker};
-    markerOverride.Apply(*config);
+    ApplyMarkerOverride(*marker, *config);
 
     logger::debug(
         "Applied preview marker override | model={} | zoom={} | rotationX={} | rotationY={} | rotationZ={}",
