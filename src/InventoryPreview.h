@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PreviewMarkerMath.h"
+
 #include <optional>
 #include <string>
 
@@ -17,18 +19,12 @@ class Relocation;
 }
 
 namespace InventoryPreview {
-struct PreviewRotation {
-    float x;
-    float y;
-    float z;
-};
-
 struct CurrentInventoryPreview {
     std::string modelPath;
     std::optional<PreviewRotation> rotation;
 };
 
-using ApplyInventoryMarker_t = void(
+using ApplyInventoryMarker = void(
     RE::Inventory3DManager*,
     RE::TESBoundObject*,
     RE::TESBoundObject*,
@@ -36,7 +32,7 @@ using ApplyInventoryMarker_t = void(
 );
 
 void ApplyInventoryMarkerWithOverrides(
-    const REL::Relocation<ApplyInventoryMarker_t>& a_original,
+    const REL::Relocation<ApplyInventoryMarker>& a_original,
     RE::Inventory3DManager* a_manager,
     RE::TESBoundObject* a_item,
     RE::TESBoundObject* a_modelObject,

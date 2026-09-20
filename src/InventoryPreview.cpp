@@ -1,38 +1,40 @@
+#include "PCH.h" // IWYU pragma: keep
+
 #include "InventoryPreview.h"
 
 #include "ConfigManager.h"
+#include "ConfigTypes.h"
 #include "ModelMatcher.h"
 #include "PreviewMarkerMath.h"
+#include "PreviewModel.h"
 
-#include "RE/B/BSInvMarker.h"
-#include "RE/E/EffectSetting.h"
-#include "RE/I/Inventory3DManager.h"
-#include "RE/N/NiAVObject.h"
-#include "RE/N/NiPoint3.h"
-#include "RE/S/SpellItem.h"
-#include "RE/T/TESBipedModelForm.h"
-#include "RE/T/TESBoundObject.h"
-#include "RE/T/TESForm.h"
-#include "RE/T/TESModel.h"
-#include "RE/T/TESObjectARMO.h"
-#include "RE/T/TESObjectBOOK.h"
-#include "RE/T/TESObjectWEAP.h"
-#include "RE/T/TESShout.h"
+#include <RE/B/BSFixedString.h>
+#include <RE/B/BSInvMarker.h>
+#include <RE/E/EffectSetting.h>
+#include <RE/F/FormTypes.h>
+#include <RE/I/Inventory3DManager.h>
+#include <RE/N/NiAVObject.h>
+#include <RE/N/NiRTTI.h>
+#include <RE/S/SpellItem.h>
+#include <RE/T/TESBoundObject.h>
+#include <RE/T/TESForm.h>
+#include <RE/T/TESModel.h>
+#include <RE/T/TESObjectARMO.h>
+#include <RE/T/TESObjectBOOK.h>
+#include <RE/T/TESObjectWEAP.h>
+#include <RE/T/TESShout.h>
+#include <SKSE/SKSE.h>
 
-#include <numbers>
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <utility>
 
 namespace InventoryPreview {
 namespace {
-    constexpr float DEGREES_PER_RADIAN = 180.0F / std::numbers::pi_v<float>;
-
-    [[nodiscard]] float RotationRadiansToDegrees(const float a_radians) noexcept {
-        return NormalizeDegrees(a_radians * DEGREES_PER_RADIAN);
-    }
-
     [[nodiscard]] std::string GetModelPath(const RE::TESModel& a_model) {
-        const auto* model = a_model.GetModel();
-        return model ? std::string {model} : std::string {};
+        const auto* path = a_model.GetModel();
+        return (path != nullptr) ? std::string {path} : std::string {};
     }
 
     [[nodiscard]] std::string GetArmorModelPath(const RE::TESObjectARMO& a_armor) {
@@ -47,7 +49,7 @@ namespace {
     }
 
     [[nodiscard]] std::string GetModelPath(const RE::TESBoundObject* a_object) {
-        if (!a_object) {
+        if (a_object == nullptr) {
             return {};
         }
 
@@ -90,7 +92,7 @@ namespace {
     }
 
     [[nodiscard]] const RE::TESBoundObject* GetInventoryPreviewModelObject(const RE::TESForm* a_item) {
-        if (!a_item) {
+        if (a_item == nullptr) {
             return nullptr;
         }
 
@@ -126,36 +128,12 @@ namespace {
         return {};
     }
 
-    [[nodiscard]] const RE::LoadedInventoryModel* GetCurrentLoadedInventoryModel() {
-        auto* manager = RE::Inventory3DManager::GetSingleton();
-        if (!manager) {
-            return nullptr;
-        }
-
-        const auto& loadedModels = manager->GetRuntimeData().loadedModels;
-        if (loadedModels.empty()) {
-            return nullptr;
-        }
-
-        return &loadedModels.data()[loadedModels.size() - 1];
-    }
-
-    [[nodiscard]] std::optional<PreviewRotation> GetPreviewRotation(const RE::LoadedInventoryModel& a_model) {
-        const auto* modelRoot = a_model.spModel.get();
-        if (!modelRoot) {
+    [[nodiscard]] std::optional<PreviewRotation> GetPreviewRotation(const RE::NiAVObject* a_modelRoot) {
+        if (a_modelRoot == nullptr) {
             return std::nullopt;
         }
 
-        RE::NiPoint3 radians;
-        if (!modelRoot->local.rotate.ToEulerAnglesXYZ(radians)) {
-            return std::nullopt;
-        }
-
-        return PreviewRotation {
-            .x = RotationRadiansToDegrees(radians.x),
-            .y = RotationRadiansToDegrees(radians.y),
-            .z = RotationRadiansToDegrees(radians.z),
-        };
+        return RotationMatrixToDegrees(a_modelRoot->local.rotate);
     }
 
     [[nodiscard]] RE::BSInvMarker* FindInventoryMarker(const RE::NiAVObject& a_modelRoot) {
@@ -191,14 +169,14 @@ namespace {
 }
 
 void ApplyInventoryMarkerWithOverrides(
-    const REL::Relocation<ApplyInventoryMarker_t>& a_original,
+    const REL::Relocation<ApplyInventoryMarker>& a_original,
     RE::Inventory3DManager* a_manager,
     RE::TESBoundObject* a_item,
     RE::TESBoundObject* a_modelObject,
     RE::NiPointer<RE::NiAVObject>* a_model
 ) {
-    auto* modelRoot = a_model ? a_model->get() : nullptr;
-    if (!modelRoot) {
+    const auto* modelRoot = (a_model != nullptr) ? a_model->get() : nullptr;
+    if (modelRoot == nullptr) {
         a_original(a_manager, a_item, a_modelObject, a_model);
         return;
     }
@@ -216,14 +194,14 @@ void ApplyInventoryMarkerWithOverrides(
     }
 
     auto* marker = FindInventoryMarker(*modelRoot);
-    if (!marker) {
+    if (marker == nullptr) {
         a_original(a_manager, a_item, a_modelObject, a_model);
         return;
     }
 
     ApplyMarkerOverride(*marker, *config);
 
-    logger::debug(
+    SKSE::log::debug(
         "Applied preview marker override | model={} | zoom={} | rotationX={} | rotationY={} | rotationZ={}",
         modelPath,
         config->zoom.has_value(),
@@ -235,19 +213,19 @@ void ApplyInventoryMarkerWithOverrides(
 }
 
 std::optional<CurrentInventoryPreview> GetCurrentInventoryPreview() {
-    const auto* loadedModel = GetCurrentLoadedInventoryModel();
+    const auto loadedModel = GetPreviewModel();
     if (!loadedModel) {
         return std::nullopt;
     }
 
-    auto path = NormalizeModelPath(ResolveModelPath(loadedModel->modelObj, loadedModel->itemBase));
+    auto path = NormalizeModelPath(ResolveModelPath(loadedModel->modelObject, loadedModel->item));
     if (path.empty()) {
         return std::nullopt;
     }
 
     return CurrentInventoryPreview {
         .modelPath = std::move(path),
-        .rotation = GetPreviewRotation(*loadedModel),
+        .rotation = GetPreviewRotation(loadedModel->rotationNode),
     };
 }
 }

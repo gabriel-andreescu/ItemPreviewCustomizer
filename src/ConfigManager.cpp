@@ -1,23 +1,37 @@
+#include "PCH.h" // IWYU pragma: keep
+
 #include "ConfigManager.h"
+
+#include "ConfigTypes.h"
+#include "ModelMatcher.h"
 
 #include <SKSE/SKSE.h>
 
 #include <CLIBUtil/string.hpp>
 #include <CLIBUtil/timer.hpp>
+#include <glaze/core/opts.hpp>
+#include <glaze/core/reflect.hpp>
+#include <glaze/json/read.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <filesystem>
 #include <mutex>
+#include <optional>
+#include <ranges>
 #include <shared_mutex>
+#include <string>
+#include <string_view>
 #include <system_error>
-
-using namespace std::literals;
+#include <utility>
+#include <vector>
 
 namespace {
-constexpr std::string_view CONFIG_FOLDER = R"(Data\SKSE\Plugins\ItemPreviewCustomizer)";
+constexpr std::string_view kConfigFolder = R"(Data\SKSE\Plugins\ItemPreviewCustomizer)";
 
 [[nodiscard]] bool IsJsonFile(const std::filesystem::path& a_path) {
-    return clib_util::string::iequals(a_path.extension().string(), ".json"sv);
+    return clib_util::string::iequals(a_path.extension().string(), ".json");
 }
 
 [[nodiscard]] bool IsValidZoom(const float a_zoom) noexcept {
@@ -45,11 +59,11 @@ void SanitizeRotation(RotationOverride& a_rotation, std::size_t& a_skippedFieldC
 }
 
 bool ConfigManager::Load() {
-    return Load(std::filesystem::path {CONFIG_FOLDER});
+    return Load(std::filesystem::path {kConfigFolder});
 }
 
 bool ConfigManager::Load(const std::filesystem::path& a_configFolder) {
-    std::unique_lock lock(configMutex_);
+    std::unique_lock const lock(configMutex_);
 
     exactConfigs_.clear();
     wildcardConfigs_.clear();
@@ -57,8 +71,6 @@ bool ConfigManager::Load(const std::filesystem::path& a_configFolder) {
     parsedFileCount_ = 0;
     failedFileCount_ = 0;
     skippedEntryCount_ = 0;
-
-    logger::info("{:*^50}", "CONFIG FILES");
 
     clib_util::Timer timer;
     timer.start();
@@ -76,7 +88,7 @@ bool ConfigManager::Load(const std::filesystem::path& a_configFolder) {
 
     timer.stop();
 
-    logger::info(
+    SKSE::log::info(
         "Config load complete | files_found={} | files_parsed={} | files_failed={} | configs={} | skipped={} | time={}ms",
         foundFileCount_,
         parsedFileCount_,
@@ -89,21 +101,21 @@ bool ConfigManager::Load(const std::filesystem::path& a_configFolder) {
     return GetConfigCountUnlocked() > 0;
 }
 
-std::optional<PreviewConfig> ConfigManager::GetConfig(std::string_view a_modelPath) const {
-    const auto modelPath = NormalizeModelPath(a_modelPath);
+std::optional<PreviewConfig> ConfigManager::GetConfig(std::string_view a_path) const {
+    const auto modelPath = NormalizeModelPath(a_path);
     if (modelPath.empty()) {
         return std::nullopt;
     }
 
-    std::shared_lock lock(configMutex_);
+    std::shared_lock const lock(configMutex_);
 
-    if (const auto it = exactConfigs_.find(modelPath); it != exactConfigs_.end()) {
-        return it->second.preview;
+    if (const auto match = exactConfigs_.find(modelPath); match != exactConfigs_.end()) {
+        return match->second.preview;
     }
 
-    for (auto it = wildcardConfigs_.rbegin(); it != wildcardConfigs_.rend(); ++it) {
-        if (it->pattern.Matches(modelPath)) {
-            return it->preview;
+    for (const auto& wildcardConfig : std::views::reverse(wildcardConfigs_)) {
+        if (wildcardConfig.pattern.Matches(modelPath)) {
+            return wildcardConfig.preview;
         }
     }
 
@@ -111,7 +123,7 @@ std::optional<PreviewConfig> ConfigManager::GetConfig(std::string_view a_modelPa
 }
 
 std::size_t ConfigManager::GetConfigCount() const {
-    std::shared_lock lock(configMutex_);
+    std::shared_lock const lock(configMutex_);
     return GetConfigCountUnlocked();
 }
 
@@ -122,25 +134,25 @@ std::size_t ConfigManager::GetConfigCountUnlocked() const noexcept {
 std::vector<std::filesystem::path> ConfigManager::CollectConfigFiles(const std::filesystem::path& a_configFolder) {
     std::vector<std::filesystem::path> files;
 
-    std::error_code ec;
-    if (!std::filesystem::exists(a_configFolder, ec)) {
-        logger::info("Config folder not found | path={}", a_configFolder.string());
+    std::error_code error;
+    if (!std::filesystem::exists(a_configFolder, error)) {
+        SKSE::log::info("Config folder not found | path={}", a_configFolder.string());
         return files;
     }
 
-    if (!std::filesystem::is_directory(a_configFolder, ec)) {
-        logger::warn("Config path is not a folder | path={}", a_configFolder.string());
+    if (!std::filesystem::is_directory(a_configFolder, error)) {
+        SKSE::log::warn("Config path is not a folder | path={}", a_configFolder.string());
         return files;
     }
 
     std::filesystem::directory_iterator iter {
         a_configFolder,
         std::filesystem::directory_options::skip_permission_denied,
-        ec
+        error
     };
 
-    if (ec) {
-        logger::error("Failed to scan config folder | path={} | error={}", a_configFolder.string(), ec.message());
+    if (error) {
+        SKSE::log::error("Failed to scan config folder | path={} | error={}", a_configFolder.string(), error.message());
         return files;
     }
 
@@ -152,36 +164,42 @@ std::vector<std::filesystem::path> ConfigManager::CollectConfigFiles(const std::
         if (entry.is_regular_file(entryError) && IsJsonFile(entry.path())) {
             files.push_back(entry.path());
         } else if (entryError) {
-            logger::warn(
+            SKSE::log::warn(
                 "Failed to inspect config path | path={} | error={}",
                 entry.path().string(),
                 entryError.message()
             );
         }
 
-        iter.increment(ec);
-        if (ec) {
-            logger::warn("Failed to advance config scan | path={} | error={}", a_configFolder.string(), ec.message());
-            ec.clear();
+        iter.increment(error);
+        if (error) {
+            SKSE::log::warn(
+                "Failed to advance config scan | path={} | error={}",
+                a_configFolder.string(),
+                error.message()
+            );
+            error.clear();
         }
     }
 
-    std::ranges::sort(files, [](const auto& a_lhs, const auto& a_rhs) {
-        return a_lhs.string() < a_rhs.string();
-    });
+    std::ranges::sort(files, [](const auto& a_lhs, const auto& a_rhs) { return a_lhs.string() < a_rhs.string(); });
 
     return files;
 }
 
 bool ConfigManager::ReadConfigFile(const std::filesystem::path& a_path) {
-    logger::info("Reading config | path={}", a_path.string());
+    SKSE::log::info("Reading config | path={}", a_path.string());
 
     std::string buffer;
     std::vector<ConfigEntry> entries;
 
     const auto err = glz::read_file_json<glz::opts {.error_on_unknown_keys = false}>(entries, a_path.string(), buffer);
     if (err) {
-        logger::error("Failed to parse config | path={} | error={}", a_path.string(), glz::format_error(err, buffer));
+        SKSE::log::error(
+            "Failed to parse config | path={} | error={}",
+            a_path.string(),
+            glz::format_error(err, buffer)
+        );
         return false;
     }
 
@@ -208,7 +226,7 @@ void ConfigManager::AddEntry(
     SanitizeRotation(preview.rotation, skippedFieldCount);
 
     if (skippedFieldCount > 0) {
-        logger::warn(
+        SKSE::log::warn(
             "Ignored invalid preview field(s) | path={} | index={} | fields={}",
             a_path.string(),
             a_index,
@@ -218,13 +236,13 @@ void ConfigManager::AddEntry(
 
     if (!preview.HasValues()) {
         ++skippedEntryCount_;
-        logger::warn("Skipping config entry with no preview fields | path={} | index={}", a_path.string(), a_index);
+        SKSE::log::warn("Skipping config entry with no preview fields | path={} | index={}", a_path.string(), a_index);
         return;
     }
 
     if (a_entry.models.empty()) {
         ++skippedEntryCount_;
-        logger::warn("Skipping config entry with no models | path={} | index={}", a_path.string(), a_index);
+        SKSE::log::warn("Skipping config entry with no models | path={} | index={}", a_path.string(), a_index);
         return;
     }
 
@@ -232,7 +250,7 @@ void ConfigManager::AddEntry(
         auto model = NormalizeModelPath(rawModel);
         if (model.empty()) {
             ++skippedEntryCount_;
-            logger::warn("Skipping empty model path | path={} | index={}", a_path.string(), a_index);
+            SKSE::log::warn("Skipping empty model path | path={} | index={}", a_path.string(), a_index);
             continue;
         }
 
@@ -242,14 +260,13 @@ void ConfigManager::AddEntry(
                 WildcardConfig {
                     .pattern = std::move(pattern),
                     .preview = preview,
-                    .source = a_path,
                 }
             );
             continue;
         }
 
         if (const auto existing = exactConfigs_.find(model); existing != exactConfigs_.end()) {
-            logger::info(
+            SKSE::log::info(
                 "Overriding exact model config | model={} | old={} | new={}",
                 model,
                 existing->second.source.string(),

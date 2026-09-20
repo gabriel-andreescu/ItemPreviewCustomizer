@@ -1,6 +1,7 @@
 #pragma once
 
-#include <glaze/glaze.hpp>
+#include <glaze/core/common.hpp>
+#include <glaze/core/meta.hpp>
 
 #include <optional>
 #include <string>
@@ -55,12 +56,16 @@ struct ConfigEntry {
 template <>
 struct glz::meta<RotationOverride> {
     using T = RotationOverride;
+    // Glaze requires this member name for its serialization metadata.
+    // NOLINTNEXTLINE(readability-identifier-naming)
     static constexpr auto value = object("x", &T::x, "y", &T::y, "z", &T::z);
 };
 
 template <>
 struct glz::meta<ConfigEntry> {
     using T = ConfigEntry;
+    // Glaze requires this member name for its serialization metadata.
+    // NOLINTNEXTLINE(readability-identifier-naming)
     static constexpr auto value = object(
         "models",
         &T::models,

@@ -9,7 +9,6 @@ class ModelPattern {
 public:
     explicit ModelPattern(std::string a_pattern);
 
-    [[nodiscard]] const std::string& GetPattern() const noexcept;
     [[nodiscard]] bool HasWildcard() const noexcept;
     [[nodiscard]] bool Matches(std::string_view a_modelPath) const noexcept;
 

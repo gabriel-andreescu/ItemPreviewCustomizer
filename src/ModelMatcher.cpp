@@ -1,20 +1,20 @@
+#include "PCH.h" // IWYU pragma: keep
+
 #include "ModelMatcher.h"
 
 #include <CLIBUtil/string.hpp>
 
 #include <cstddef>
+#include <string>
+#include <string_view>
 #include <utility>
 
-using namespace std::literals;
-
 namespace {
-[[nodiscard]] std::string CollapseSlashes(std::string_view a_path) {
-    std::string result;
-    result.reserve(a_path.size());
-
+void CollapseSlashes(std::string& a_path) {
+    std::size_t length = 0;
     bool previousSlash = false;
-    for (const auto ch : a_path) {
-        if (ch == '\\') {
+    for (const auto character : a_path) {
+        if (character == '\\') {
             if (previousSlash) {
                 continue;
             }
@@ -23,18 +23,18 @@ namespace {
             previousSlash = false;
         }
 
-        result.push_back(ch);
+        a_path[length++] = character;
     }
 
-    return result;
+    a_path.resize(length);
 }
 
 [[nodiscard]] bool WildcardMatches(std::string_view a_pattern, std::string_view a_value) noexcept {
-    constexpr auto npos = std::string_view::npos;
+    constexpr auto kNotFound = std::string_view::npos;
 
     std::size_t patternIndex = 0;
     std::size_t valueIndex = 0;
-    std::size_t starIndex = npos;
+    std::size_t starIndex = kNotFound;
     std::size_t retryIndex = 0;
 
     while (valueIndex < a_value.size()) {
@@ -44,7 +44,7 @@ namespace {
         } else if (patternIndex < a_pattern.size() && a_pattern[patternIndex] == a_value[valueIndex]) {
             ++patternIndex;
             ++valueIndex;
-        } else if (starIndex != npos) {
+        } else if (starIndex != kNotFound) {
             patternIndex = starIndex + 1;
             valueIndex = ++retryIndex;
         } else {
@@ -63,28 +63,28 @@ namespace {
 std::string NormalizeModelPath(std::string_view a_path) {
     auto normalized = clib_util::string::tolower(a_path);
     clib_util::string::trim(normalized);
-    clib_util::string::replace_all(normalized, "/"sv, "\\"sv);
-    normalized = CollapseSlashes(normalized);
+    clib_util::string::replace_all(normalized, "/", "\\");
+    CollapseSlashes(normalized);
 
     while (!normalized.empty() && normalized.front() == '\\') {
         normalized.erase(normalized.begin());
     }
 
-    if (normalized.starts_with(R"(.\)"sv)) {
+    if (normalized.starts_with(R"(.\)")) {
         normalized.erase(0, 2);
     }
 
-    constexpr std::string_view meshesPrefix = R"(meshes\)";
-    constexpr std::string_view meshesMarker = R"(\meshes\)";
+    constexpr std::string_view kMeshesPrefix = R"(meshes\)";
+    constexpr std::string_view kMeshesMarker = R"(\meshes\)";
 
-    if (!normalized.starts_with(meshesPrefix)) {
-        if (const auto pos = normalized.find(meshesMarker); pos != std::string::npos) {
+    if (!normalized.starts_with(kMeshesPrefix)) {
+        if (const auto pos = normalized.find(kMeshesMarker); pos != std::string::npos) {
             normalized.erase(0, pos + 1);
         }
     }
 
-    if (!normalized.empty() && !normalized.starts_with(meshesPrefix) && !normalized.contains(':')) {
-        normalized.insert(0, meshesPrefix);
+    if (!normalized.empty() && !normalized.starts_with(kMeshesPrefix) && !normalized.contains(':')) {
+        normalized.insert(0, kMeshesPrefix);
     }
 
     return normalized;
@@ -93,10 +93,6 @@ std::string NormalizeModelPath(std::string_view a_path) {
 ModelPattern::ModelPattern(std::string a_pattern)
     : pattern_(std::move(a_pattern))
     , hasWildcard_(pattern_.contains('*')) {}
-
-const std::string& ModelPattern::GetPattern() const noexcept {
-    return pattern_;
-}
 
 bool ModelPattern::HasWildcard() const noexcept {
     return hasWildcard_;

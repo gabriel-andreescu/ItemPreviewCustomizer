@@ -18,7 +18,7 @@ public:
     bool Load();
     bool Load(const std::filesystem::path& a_configFolder);
 
-    [[nodiscard]] std::optional<PreviewConfig> GetConfig(std::string_view a_modelPath) const;
+    [[nodiscard]] std::optional<PreviewConfig> GetConfig(std::string_view a_path) const;
     [[nodiscard]] std::size_t GetConfigCount() const;
 
 private:
@@ -32,7 +32,6 @@ private:
     struct WildcardConfig {
         ModelPattern pattern;
         PreviewConfig preview;
-        std::filesystem::path source;
     };
 
     ConfigManager() = default;

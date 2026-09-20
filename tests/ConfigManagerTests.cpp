@@ -1,7 +1,10 @@
 #include "ConfigManager.h"
+#include "ConfigTypes.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <spdlog/common.h>
+#include <spdlog/logger.h>
 #include <spdlog/sinks/null_sink.h>
 #include <spdlog/spdlog.h>
 
@@ -11,19 +14,37 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <utility>
 
 namespace {
+struct NullLogger {
+    NullLogger() {
+        auto logger = std::make_shared<spdlog::logger>("ipc-tests", std::make_shared<spdlog::sinks::null_sink_mt>());
+        spdlog::set_default_logger(std::move(logger));
+        spdlog::set_level(spdlog::level::off);
+    }
+};
+
 class TempDir {
 public:
     TempDir() {
+        static const NullLogger logger;
         const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
         path_ = std::filesystem::temp_directory_path() / ("ipc-tests-" + std::to_string(stamp));
         std::filesystem::create_directories(path_);
     }
 
+    TempDir(const TempDir&) = delete;
+    TempDir(TempDir&&) = delete;
+    TempDir& operator=(const TempDir&) = delete;
+    TempDir& operator=(TempDir&&) = delete;
+
+    // Filesystem errors use error_code. Allocation failure during teardown is fatal.
+    // NOLINTNEXTLINE(bugprone-exception-escape)
     ~TempDir() {
-        std::error_code ec;
-        std::filesystem::remove_all(path_, ec);
+        std::error_code error;
+        std::filesystem::remove_all(path_, error);
     }
 
     [[nodiscard]] const std::filesystem::path& Path() const noexcept {
@@ -34,34 +55,24 @@ private:
     std::filesystem::path path_;
 };
 
-struct NullLogger {
-    NullLogger() {
-        auto logger = std::make_shared<spdlog::logger>("ipc-tests", std::make_shared<spdlog::sinks::null_sink_mt>());
-        spdlog::set_default_logger(std::move(logger));
-        spdlog::set_level(spdlog::level::off);
-    }
-};
+void WriteFile(const std::filesystem::path& path, std::string_view contents) {
+    std::filesystem::create_directories(path.parent_path());
 
-const NullLogger nullLogger;
-
-void WriteFile(const std::filesystem::path& a_path, std::string_view a_contents) {
-    std::filesystem::create_directories(a_path.parent_path());
-
-    std::ofstream file {a_path};
+    std::ofstream file {path};
     REQUIRE(file.is_open());
-    file << a_contents;
+    file << contents;
     REQUIRE(file.good());
 }
 
-float GetZoom(std::string_view a_modelPath) {
-    const auto config = ConfigManager::GetSingleton()->GetConfig(a_modelPath);
+float GetZoom(std::string_view modelPath) {
+    const auto config = ConfigManager::GetSingleton()->GetConfig(modelPath);
     REQUIRE(config.has_value());
     REQUIRE(config->zoom.has_value());
     return *config->zoom;
 }
 
-RotationOverride GetRotation(std::string_view a_modelPath) {
-    const auto config = ConfigManager::GetSingleton()->GetConfig(a_modelPath);
+RotationOverride GetRotation(std::string_view modelPath) {
+    const auto config = ConfigManager::GetSingleton()->GetConfig(modelPath);
     REQUIRE(config.has_value());
     REQUIRE(config->rotation.HasValues());
     return config->rotation;
@@ -69,7 +80,7 @@ RotationOverride GetRotation(std::string_view a_modelPath) {
 }
 
 TEST_CASE("ConfigManager handles missing and empty folders", "[config-manager]") {
-    TempDir tempDir;
+    TempDir const tempDir;
     const auto missingFolder = tempDir.Path() / "missing";
 
     auto* manager = ConfigManager::GetSingleton();
@@ -85,7 +96,7 @@ TEST_CASE("ConfigManager handles missing and empty folders", "[config-manager]")
 }
 
 TEST_CASE("ConfigManager loads exact model configs", "[config-manager]") {
-    TempDir tempDir;
+    TempDir const tempDir;
     WriteFile(
         tempDir.Path() / "exact.json",
         R"([
@@ -105,7 +116,7 @@ TEST_CASE("ConfigManager loads exact model configs", "[config-manager]") {
 }
 
 TEST_CASE("ConfigManager loads wildcard model configs", "[config-manager]") {
-    TempDir tempDir;
+    TempDir const tempDir;
     WriteFile(
         tempDir.Path() / "wildcard.json",
         R"([
@@ -125,7 +136,7 @@ TEST_CASE("ConfigManager loads wildcard model configs", "[config-manager]") {
 }
 
 TEST_CASE("ConfigManager loads rotation overrides", "[config-manager]") {
-    TempDir tempDir;
+    TempDir const tempDir;
     WriteFile(
         tempDir.Path() / "rotation.json",
         R"([
@@ -153,7 +164,7 @@ TEST_CASE("ConfigManager loads rotation overrides", "[config-manager]") {
 }
 
 TEST_CASE("ConfigManager lets rotationDegrees alias overlay rotation", "[config-manager]") {
-    TempDir tempDir;
+    TempDir const tempDir;
     WriteFile(
         tempDir.Path() / "rotation.json",
         R"([
@@ -185,7 +196,7 @@ TEST_CASE("ConfigManager lets rotationDegrees alias overlay rotation", "[config-
 }
 
 TEST_CASE("ConfigManager keeps loading after invalid JSON files", "[config-manager]") {
-    TempDir tempDir;
+    TempDir const tempDir;
     WriteFile(tempDir.Path() / "a_invalid.json", R"([{)");
     WriteFile(
         tempDir.Path() / "b_valid.json",
@@ -205,7 +216,7 @@ TEST_CASE("ConfigManager keeps loading after invalid JSON files", "[config-manag
 }
 
 TEST_CASE("ConfigManager skips no-op config entries", "[config-manager]") {
-    TempDir tempDir;
+    TempDir const tempDir;
     WriteFile(
         tempDir.Path() / "noop.json",
         R"([
@@ -223,7 +234,7 @@ TEST_CASE("ConfigManager skips no-op config entries", "[config-manager]") {
 }
 
 TEST_CASE("ConfigManager ignores invalid preview fields and keeps valid fields", "[config-manager]") {
-    TempDir tempDir;
+    TempDir const tempDir;
     WriteFile(
         tempDir.Path() / "invalid-fields.json",
         R"([
@@ -250,9 +261,9 @@ TEST_CASE("ConfigManager ignores invalid preview fields and keeps valid fields",
 }
 
 TEST_CASE("ConfigManager resolves duplicate exact configs by sorted file order", "[config-manager]") {
-    TempDir tempDir;
+    TempDir const tempDir;
     WriteFile(
-        tempDir.Path() / "a_first.json",
+        tempDir.Path() / "first.json",
         R"([
           {
             "models": ["meshes/items/ring_go.nif"],
@@ -278,9 +289,9 @@ TEST_CASE("ConfigManager resolves duplicate exact configs by sorted file order",
 }
 
 TEST_CASE("ConfigManager prefers exact configs before wildcard configs", "[config-manager]") {
-    TempDir tempDir;
+    TempDir const tempDir;
     WriteFile(
-        tempDir.Path() / "a_exact.json",
+        tempDir.Path() / "exact.json",
         R"([
           {
             "models": ["meshes/items/ring_go.nif"],
@@ -306,9 +317,9 @@ TEST_CASE("ConfigManager prefers exact configs before wildcard configs", "[confi
 }
 
 TEST_CASE("ConfigManager resolves wildcard conflicts by later loaded match", "[config-manager]") {
-    TempDir tempDir;
+    TempDir const tempDir;
     WriteFile(
-        tempDir.Path() / "a_first.json",
+        tempDir.Path() / "first.json",
         R"([
           {
             "models": ["meshes/items/*_go.nif"],

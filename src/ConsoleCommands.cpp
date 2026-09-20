@@ -1,18 +1,37 @@
+#include "PCH.h" // IWYU pragma: keep
+
 #include "ConsoleCommands.h"
 
 #include "ConfigManager.h"
 #include "InventoryPreview.h"
+#include "Settings.h"
 
-#include <Windows.h>
+#include <RE/C/CommandTable.h>
+#include <RE/C/ConsoleLog.h>
+#include <RE/S/Script.h>
+#include <RE/T/TESObjectREFR.h>
+#include <SKSE/SKSE.h>
 
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <format>
+#include <span>
 #include <string>
 #include <string_view>
+#include <winbase.h>
+#include <winuser.h>
 
 namespace ConsoleCommands {
 namespace {
+    void PrintConsole(const std::string& a_message) {
+        if (auto* console = RE::ConsoleLog::GetSingleton()) {
+            // Skyrim exposes console output through a printf-style function.
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
+            console->Print("%s", a_message.c_str());
+        }
+    }
+
     struct ClipboardScope {
         ClipboardScope() = default;
 
@@ -27,69 +46,58 @@ namespace {
     };
 
     struct ReloadConfig {
-        constexpr static auto ORIGINAL_COMMAND = "ToggleBoundVisGeom"sv;
-        constexpr static auto LONG_NAME = "ReloadIPC"sv;
-        constexpr static auto SHORT_NAME = "ReloadIPC"sv;
-        constexpr static auto HELP = "Reload Item Preview Customizer configs from disk\n"sv;
+        constexpr static std::string_view kOriginalCommand = "ToggleBoundVisGeom";
+        constexpr static std::string_view kLongName = "ReloadIPC";
+        constexpr static std::string_view kShortName = "ReloadIPC";
+        constexpr static std::string_view kHelp = "Reload Item Preview Customizer configs from disk\n";
 
+        // The native console callback has eight ABI-defined parameters.
+        // NOLINTNEXTLINE(readability-function-size)
         static bool Execute(
-            const RE::SCRIPT_PARAMETER* a_params,
-            RE::SCRIPT_FUNCTION::ScriptData* a_scriptData,
-            RE::TESObjectREFR* a_thisObj,
-            RE::TESObjectREFR* a_containingObj,
-            RE::Script* a_scriptObj,
-            RE::ScriptLocals* a_locals,
-            double& a_result,
-            std::uint32_t& a_opcodeOffsetPtr
+            const RE::SCRIPT_PARAMETER* /*params*/,
+            RE::SCRIPT_FUNCTION::ScriptData* /*scriptData*/,
+            RE::TESObjectREFR* /*thisObj*/,
+            RE::TESObjectREFR* /*containingObj*/,
+            RE::Script* /*scriptObj*/,
+            RE::ScriptLocals* /*locals*/,
+            double& /*result*/,
+            std::uint32_t& /*opcodeOffset*/
         ) {
-            (void)a_params;
-            (void)a_scriptData;
-            (void)a_thisObj;
-            (void)a_containingObj;
-            (void)a_scriptObj;
-            (void)a_locals;
-            (void)a_result;
-            (void)a_opcodeOffsetPtr;
-
+            Settings::Reload();
             auto* manager = ConfigManager::GetSingleton();
             manager->Load();
 
-            if (auto* console = RE::ConsoleLog::GetSingleton()) {
-                console->Print(
-                    "Reloaded %llu config(s). Reopen inventory.",
-                    static_cast<unsigned long long>(manager->GetConfigCount())
-                );
-            }
+            PrintConsole(std::format("Reloaded {} config(s). Reopen inventory.", manager->GetConfigCount()));
 
             return false;
         }
     };
 
     bool CopyTextToClipboard(std::string_view a_text) {
-        if (a_text.empty() || !::OpenClipboard(nullptr)) {
+        if (a_text.empty() || (::OpenClipboard(nullptr) == 0)) {
             return false;
         }
 
-        ClipboardScope clipboard;
+        ClipboardScope const clipboard;
         static_cast<void>(::EmptyClipboard());
 
         const auto bufferSize = a_text.size() + 1;
         auto* memory = ::GlobalAlloc(GMEM_MOVEABLE, bufferSize);
-        if (!memory) {
+        if (memory == nullptr) {
             return false;
         }
 
         auto* buffer = static_cast<char*>(::GlobalLock(memory));
-        if (!buffer) {
+        if (buffer == nullptr) {
             static_cast<void>(::GlobalFree(memory));
             return false;
         }
 
         std::memcpy(buffer, a_text.data(), a_text.size());
-        buffer[a_text.size()] = '\0';
+        std::span {buffer, bufferSize}.back() = '\0';
         static_cast<void>(::GlobalUnlock(memory));
 
-        if (!::SetClipboardData(CF_TEXT, memory)) {
+        if (::SetClipboardData(CF_TEXT, memory) == nullptr) {
             static_cast<void>(::GlobalFree(memory));
             return false;
         }
@@ -98,20 +106,20 @@ namespace {
     }
 
     [[nodiscard]] bool ShouldIncludeRotation(RE::SCRIPT_FUNCTION::ScriptData* a_scriptData) {
-        if (!a_scriptData || a_scriptData->numParams == 0) {
+        if ((a_scriptData == nullptr) || a_scriptData->numParams == 0) {
             return false;
         }
 
         const auto* chunk = a_scriptData->GetIntegerChunk();
-        return chunk && chunk->GetInteger() != 0;
+        return (chunk != nullptr) && chunk->GetInteger() != 0;
     }
 
     [[nodiscard]] std::string EscapeJsonString(std::string_view a_value) {
         std::string escaped;
         escaped.reserve(a_value.size());
 
-        for (const auto ch : a_value) {
-            switch (ch) {
+        for (const auto character : a_value) {
+            switch (character) {
                 case '\\': escaped += R"(\\)"; break;
                 case '"':  escaped += R"(\")"; break;
                 case '\b': escaped += R"(\b)"; break;
@@ -120,13 +128,13 @@ namespace {
                 case '\r': escaped += R"(\r)"; break;
                 case '\t': escaped += R"(\t)"; break;
                 default:
-                    if (static_cast<unsigned char>(ch) < 0x20) {
+                    if (static_cast<unsigned char>(character) < 0x20) {
                         escaped += std::format(
                             R"(\u{:04x})",
-                            static_cast<unsigned int>(static_cast<unsigned char>(ch))
+                            static_cast<unsigned int>(static_cast<unsigned char>(character))
                         );
                     } else {
-                        escaped.push_back(ch);
+                        escaped.push_back(character);
                     }
                     break;
             }
@@ -180,67 +188,56 @@ namespace {
     }
 
     struct CopyPreviewPath {
-        constexpr static auto ORIGINAL_COMMAND = "ToggleHeapTracking"sv;
-        constexpr static auto LONG_NAME = "CopyIPCPath"sv;
-        constexpr static auto SHORT_NAME = "CopyIPCPath"sv;
-        constexpr static auto
-            HELP = "Copy the current inventory preview rule to the clipboard\n(1: include rotation)"sv;
+        constexpr static std::string_view kOriginalCommand = "ToggleHeapTracking";
+        constexpr static std::string_view kLongName = "CopyIPCPath";
+        constexpr static std::string_view kShortName = "CopyIPCPath";
+        constexpr static std::string_view
+            kHelp = "Copy the current inventory preview rule to the clipboard\n(1: include rotation)";
 
-        constexpr static RE::SCRIPT_PARAMETER SCRIPT_PARAMS = {
+        constexpr static RE::SCRIPT_PARAMETER kScriptParams = {
             .paramName = "IncludeRotation",
             .paramType = RE::SCRIPT_PARAM_TYPE::kInt,
-            .optional = true
+            .optional = true,
         };
 
+        // The native console callback has eight ABI-defined parameters.
+        // NOLINTNEXTLINE(readability-function-size)
         static bool Execute(
-            const RE::SCRIPT_PARAMETER* a_params,
+            const RE::SCRIPT_PARAMETER* /*params*/,
             RE::SCRIPT_FUNCTION::ScriptData* a_scriptData,
-            RE::TESObjectREFR* a_thisObj,
-            RE::TESObjectREFR* a_containingObj,
-            RE::Script* a_scriptObj,
-            RE::ScriptLocals* a_locals,
-            double& a_result,
-            std::uint32_t& a_opcodeOffsetPtr
+            RE::TESObjectREFR* /*thisObj*/,
+            RE::TESObjectREFR* /*containingObj*/,
+            RE::Script* /*scriptObj*/,
+            RE::ScriptLocals* /*locals*/,
+            double& /*result*/,
+            std::uint32_t& /*opcodeOffset*/
         ) {
-            (void)a_params;
-            (void)a_thisObj;
-            (void)a_containingObj;
-            (void)a_scriptObj;
-            (void)a_locals;
-            (void)a_result;
-            (void)a_opcodeOffsetPtr;
-
-            auto* console = RE::ConsoleLog::GetSingleton();
             const auto includeRotation = ShouldIncludeRotation(a_scriptData);
             const auto preview = InventoryPreview::GetCurrentInventoryPreview();
             if (!preview) {
                 constexpr auto kNoPreviewModelPathMessage = "No current inventory preview model path available to copy";
-                if (console) {
-                    console->Print(kNoPreviewModelPathMessage);
-                }
-                logger::info("{}", kNoPreviewModelPathMessage);
+                PrintConsole(kNoPreviewModelPathMessage);
+                SKSE::log::info("{}", kNoPreviewModelPathMessage);
                 return false;
             }
 
             if (includeRotation && !preview->rotation.has_value()) {
                 constexpr auto kNoPreviewRotationMessage = "No current inventory preview rotation available to copy";
-                if (console) {
-                    console->Print(kNoPreviewRotationMessage);
-                }
-                logger::info("{}", kNoPreviewRotationMessage);
+                PrintConsole(kNoPreviewRotationMessage);
+                SKSE::log::info("{}", kNoPreviewRotationMessage);
                 return false;
             }
 
             const auto rule = FormatPreviewRule(*preview, includeRotation);
             if (CopyTextToClipboard(rule)) {
-                if (console) {
-                    console->Print(
-                        includeRotation ? "Copied current inventory preview rule with rotation:\n%s"
-                                        : "Copied current inventory preview rule:\n%s",
-                        rule.c_str()
-                    );
-                }
-                logger::info(
+                PrintConsole(
+                    std::format(
+                        "Copied current inventory preview rule{}:\n{}",
+                        includeRotation ? " with rotation" : "",
+                        rule
+                    )
+                );
+                SKSE::log::info(
                     "Copied current inventory preview rule | path={} | rotation={}",
                     preview->modelPath,
                     includeRotation
@@ -248,30 +245,28 @@ namespace {
                 return false;
             }
 
-            if (console) {
-                console->Print("Clipboard copy failed:\n%s", rule.c_str());
-            }
-            logger::warn("Failed to copy current inventory preview rule to clipboard | path={}", preview->modelPath);
+            PrintConsole(std::format("Clipboard copy failed:\n{}", rule));
+            SKSE::log::warn("Failed to copy current inventory preview rule to clipboard | path={}", preview->modelPath);
             return false;
         }
     };
 
     template <class T>
     void InstallConsoleCommand() {
-        auto* function = RE::SCRIPT_FUNCTION::LocateConsoleCommand(T::ORIGINAL_COMMAND);
+        auto* function = RE::SCRIPT_FUNCTION::LocateConsoleCommand(T::kOriginalCommand);
         if (!function) {
-            logger::warn("Failed to locate console command slot | command={}", T::ORIGINAL_COMMAND);
+            SKSE::log::warn("Failed to locate console command slot | command={}", T::kOriginalCommand);
             return;
         }
 
-        function->functionName = T::LONG_NAME.data();
-        function->shortName = T::SHORT_NAME.data();
-        function->helpString = T::HELP.data();
+        function->functionName = T::kLongName.data();
+        function->shortName = T::kShortName.data();
+        function->helpString = T::kHelp.data();
         function->referenceFunction = false;
-        if constexpr (requires { T::SCRIPT_PARAMS; }) {
+        if constexpr (requires { T::kScriptParams; }) {
             // CommonLib exposes SetParameters for native script parameter arrays.
             // NOLINTNEXTLINE(modernize-avoid-c-arrays)
-            static RE::SCRIPT_PARAMETER params[] = {T::SCRIPT_PARAMS};
+            static RE::SCRIPT_PARAMETER params[] = {T::kScriptParams};
             function->SetParameters(params);
         } else {
             function->SetParameters();
@@ -279,7 +274,7 @@ namespace {
         function->executeFunction = &T::Execute;
         function->conditionFunction = nullptr;
 
-        logger::info("Installed console command | command={}", T::LONG_NAME);
+        SKSE::log::info("Installed console command | command={}", T::kLongName);
     }
 }
 

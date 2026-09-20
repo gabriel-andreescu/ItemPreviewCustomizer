@@ -1,11 +1,18 @@
+#include "PCH.h" // IWYU pragma: keep
+
 #include "Hooks.h"
 
 #include "InventoryPreview.h"
 
+#include <RE/I/Inventory3DManager.h>
+#include <SKSE/SKSE.h>
+
+#include <cstdint>
+
 namespace Hooks {
 namespace {
     struct ApplyInventoryMarkerSync {
-        static void thunk(
+        static void Thunk(
             RE::Inventory3DManager* a_manager,
             RE::TESBoundObject* a_item,
             RE::TESBoundObject* a_modelObject,
@@ -14,11 +21,11 @@ namespace {
             InventoryPreview::ApplyInventoryMarkerWithOverrides(func, a_manager, a_item, a_modelObject, a_model);
         }
 
-        static inline REL::Relocation<InventoryPreview::ApplyInventoryMarker_t> func;
+        static inline REL::Relocation<InventoryPreview::ApplyInventoryMarker> func;
     };
 
     struct ApplyInventoryMarkerDeferred {
-        static void thunk(
+        static void Thunk(
             RE::Inventory3DManager* a_manager,
             RE::TESBoundObject* a_item,
             RE::TESBoundObject* a_modelObject,
@@ -27,28 +34,24 @@ namespace {
             InventoryPreview::ApplyInventoryMarkerWithOverrides(func, a_manager, a_item, a_modelObject, a_model);
         }
 
-        static inline REL::Relocation<InventoryPreview::ApplyInventoryMarker_t> func;
+        static inline REL::Relocation<InventoryPreview::ApplyInventoryMarker> func;
     };
 }
 
 void Install() {
-#ifndef __clang_analyzer__
-    SKSE::AllocTrampoline(14 * 2);
-
-    // RE: Inventory3DManager::LoadInventoryItem.
+    // LoadInventoryItem applies the marker before displaying the model.
     REL::Relocation<std::uintptr_t> syncTarget {
         REL::VariantID(50885, 51758, 0x8B4ED0),
         REL::VariantOffset(0x281, 0x293, 0x282)
     };
     REL::Relocation<std::uintptr_t> deferredTarget {
-        REL::VariantID(50885, 51758, 0x8B4ED0),
-        REL::VariantOffset(0xFFA, 0x10F3, 0x1500)
+        REL::VariantID(50900, 51776, 0x8B6220),
+        REL::VariantOffset(0x1BA, 0x1C3, 0x1B0)
     };
 
-    stl::write_thunk_call<ApplyInventoryMarkerSync>(syncTarget);
-    stl::write_thunk_call<ApplyInventoryMarkerDeferred>(deferredTarget);
-#endif
+    ApplyInventoryMarkerSync::func = syncTarget.write_call<5>(ApplyInventoryMarkerSync::Thunk);
+    ApplyInventoryMarkerDeferred::func = deferredTarget.write_call<5>(ApplyInventoryMarkerDeferred::Thunk);
 
-    logger::info("Hooks: inventory preview hooks installed");
+    SKSE::log::info("Inventory preview hooks installed");
 }
 }

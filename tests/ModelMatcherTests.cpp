@@ -19,8 +19,17 @@ TEST_CASE("NormalizeModelPath returns normalized model paths", "[model-matcher]"
     );
 }
 
+TEST_CASE("Path normalization preserves empty, absolute, and repeated separators", "[model-matcher]") {
+    CHECK(NormalizeModelPath("").empty());
+    CHECK(NormalizeModelPath(" \t\r\n ").empty());
+    CHECK(NormalizeModelPath(R"(////\\\\)").empty());
+    CHECK(NormalizeModelPath(R"(\\.\\Meshes////Items\\\\Ring.NIF)") == R"(meshes\items\ring.nif)");
+    CHECK(NormalizeModelPath(R"(D:\\Assets\\Ring.NIF)") == R"(d:\assets\ring.nif)");
+    CHECK(NormalizeModelPath(R"(Meshes\\Items\\)") == R"(meshes\items\)");
+}
+
 TEST_CASE("ModelPattern matches exact normalized paths", "[model-matcher]") {
-    ModelPattern pattern {NormalizeModelPath(R"(meshes\items\ring_go.nif)")};
+    ModelPattern const pattern {NormalizeModelPath(R"(meshes\items\ring_go.nif)")};
 
     CHECK_FALSE(pattern.HasWildcard());
     CHECK(pattern.Matches(NormalizeModelPath(R"(meshes/items/ring_go.nif)")));
@@ -28,7 +37,7 @@ TEST_CASE("ModelPattern matches exact normalized paths", "[model-matcher]") {
 }
 
 TEST_CASE("ModelPattern supports star wildcards", "[model-matcher]") {
-    ModelPattern pattern {NormalizeModelPath(R"(meshes/*/rings/dummyring_*.nif)")};
+    ModelPattern const pattern {NormalizeModelPath(R"(meshes/*/rings/dummyring_*.nif)")};
 
     CHECK(pattern.HasWildcard());
     CHECK(pattern.Matches(NormalizeModelPath(R"(meshes/lefthandringsskse/rings/dummyring_1.nif)")));
@@ -37,7 +46,7 @@ TEST_CASE("ModelPattern supports star wildcards", "[model-matcher]") {
 }
 
 TEST_CASE("ModelPattern treats non-star characters literally", "[model-matcher]") {
-    ModelPattern pattern {NormalizeModelPath(R"(meshes/items/ring?.nif)")};
+    ModelPattern const pattern {NormalizeModelPath(R"(meshes/items/ring?.nif)")};
 
     CHECK_FALSE(pattern.HasWildcard());
     CHECK(pattern.Matches(NormalizeModelPath(R"(meshes/items/ring?.nif)")));
