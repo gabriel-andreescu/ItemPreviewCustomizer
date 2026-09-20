@@ -1,6 +1,7 @@
 [size=4][color=#00ffff]OVERVIEW[/color][/size]
 SKSE plugin that allows you to manually adjust item preview zoom and rotation through JSON files without touching the nif files.
 
+
 [size=4][color=#00ffff]CONFIGURATION[/color][/size]
 Add JSON rule files directly in [i]Data\SKSE\Plugins\ItemPreviewCustomizer[/i].
 Each file contains an array of rules. Rules match mesh paths case-insensitively, accept / or \, and support * wildcards. Example:
@@ -23,32 +24,43 @@ Each file contains an array of rules. Rules match mesh paths case-insensitively,
 [i]rotation[/i] is optional and uses degrees. You can set only the axes you want to override.
 A rule may set zoom, rotation, or both. Rules with neither are ignored.
 
-[size=3][color=#00ffff]Rule priority[/color][/size]
+[b][color=#88ccff]Rule priority[/color][/b]
 JSON files in [i]Data\SKSE\Plugins\ItemPreviewCustomizer[/i] load alphabetically. Subfolders are not scanned. Rules inside each file load from top to bottom.
 
 For the same mesh path, the last exact rule is used. If there is no exact rule for that mesh, the last matching wildcard rule is used.
 
-Editing existing JSON files: run [i]ReloadIPC[/i], then reopen the inventory. Newly created JSON files require a game restart.
+After editing rules, run [i]ReloadIPC[/i] in the console, then reopen the inventory. If you remove a rule or one of its values, you may need to restart the game to see the change. When using MO2, restart the game after adding new JSON files.
 
-Currently only meshes with a root BSInvMarker are supported.
+Debug logging is configured in [i]Data\MCM\Settings\ItemPreviewCustomizer.ini[/i]. The file is created on first launch. Set [i]bDebugLogging=1[/i] and run [i]ReloadIPC[/i] to apply it.
 
-[size=3][color=#00ffff]Console commands[/color][/size]
-[i]ReloadIPC[/i]: reloads existing config files from disk.
+[b][color=#88ccff]Console commands[/color][/b]
+[i]ReloadIPC[/i]: reloads the INI and JSON rules.
 [i]CopyIPCPath[/i]: copies a JSON rule for the current inventory preview.
 [i]CopyIPCPath 1[/i]: includes the current preview rotation.
 
 
 [size=4][color=#00ffff]COMPATIBILITY[/color][/size]
-Should be compatible with anything.
+Supports Skyrim SE, Steam AE, GOG AE, and VR. Meshes need a root BSInvMarker.
+Other plugins that change the same inventory preview functions may conflict.
 
 
 [size=4][color=#00ffff]REQUIREMENTS[/color][/size]
+[url=https://skse.silverlock.org/]SKSE[/url] for your installed game version.
+
 SE/AE
 [url=https://www.nexusmods.com/skyrimspecialedition/mods/32444]Address Library for SKSE Plugins[/url]
 
 VR
-[url=https://www.nexusmods.com/skyrimspecialedition/mods/58101]Address Library for SKSEVR[/url]
+[url=https://www.nexusmods.com/skyrimspecialedition/mods/58101]VR Address Library for SKSEVR[/url]
 
 
 [size=4][color=#00ffff]SOURCE[/color][/size]
 [url=https://github.com/gabriel-andreescu/ItemPreviewCustomizer]github.com/gabriel-andreescu/ItemPreviewCustomizer[/url]
+
+
+[size=4][color=#00ffff]CREDITS[/color][/size]
+[list]
+[*][url=https://github.com/alandtse/CommonLibSSE-NG]CommonLibSSE-NG[/url][/*]
+[*][url=https://github.com/powerof3/CLibUtil]CLibUtil[/url][/*]
+[*][url=https://github.com/stephenberry/glaze]Glaze[/url] - JSON parsing[/*]
+[/list]
