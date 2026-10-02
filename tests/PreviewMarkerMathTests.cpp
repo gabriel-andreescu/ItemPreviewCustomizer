@@ -48,13 +48,14 @@ TEST_CASE("Copied rotations reconstruct preview matrices across quadrants", "[pr
             rotation.y * kRadiansPerDegree,
             rotation.z * kRadiansPerDegree
         );
-        const auto copied = RotationMatrixToDegrees(original);
-        REQUIRE(copied.has_value());
+        const auto degrees = RotationMatrixToDegrees(original);
+        REQUIRE(degrees.has_value());
+        const auto copied = degrees.value_or(PreviewRotation {});
         RE::NiMatrix3 restored;
         restored.SetEulerAnglesXYZ(
-            copied->x * kRadiansPerDegree,
-            copied->y * kRadiansPerDegree,
-            copied->z * kRadiansPerDegree
+            copied.x * kRadiansPerDegree,
+            copied.y * kRadiansPerDegree,
+            copied.z * kRadiansPerDegree
         );
         for (std::size_t row = 0; row < 3; ++row) {
             for (std::size_t column = 0; column < 3; ++column) {

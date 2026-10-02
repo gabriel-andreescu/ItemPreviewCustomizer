@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -31,8 +32,8 @@ public:
     TempDir() {
         static const NullLogger logger;
         const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-        path_ = std::filesystem::temp_directory_path() / ("ipc-tests-" + std::to_string(stamp));
-        std::filesystem::create_directories(path_);
+        _path = std::filesystem::temp_directory_path() / ("ipc-tests-" + std::to_string(stamp));
+        std::filesystem::create_directories(_path);
     }
 
     TempDir(const TempDir&) = delete;
@@ -44,38 +45,42 @@ public:
     // NOLINTNEXTLINE(bugprone-exception-escape)
     ~TempDir() {
         std::error_code error;
-        std::filesystem::remove_all(path_, error);
+        std::filesystem::remove_all(_path, error);
     }
 
     [[nodiscard]] const std::filesystem::path& Path() const noexcept {
-        return path_;
+        return _path;
     }
 
 private:
-    std::filesystem::path path_;
+    std::filesystem::path _path;
 };
 
-void WriteFile(const std::filesystem::path& path, std::string_view contents) {
-    std::filesystem::create_directories(path.parent_path());
+void WriteFile(const std::filesystem::path& a_path, std::string_view a_contents) {
+    std::filesystem::create_directories(a_path.parent_path());
 
-    std::ofstream file {path};
+    std::ofstream file {a_path};
     REQUIRE(file.is_open());
-    file << contents;
+    file << a_contents;
     REQUIRE(file.good());
 }
 
-float GetZoom(std::string_view modelPath) {
-    const auto config = ConfigManager::GetSingleton()->GetConfig(modelPath);
-    REQUIRE(config.has_value());
-    REQUIRE(config->zoom.has_value());
-    return *config->zoom;
+// REQUIRE fails the test on an empty optional before the value is read.
+template <class T>
+T Unwrap(const std::optional<T>& a_value) {
+    REQUIRE(a_value.has_value());
+    return a_value.value_or(T {});
 }
 
-RotationOverride GetRotation(std::string_view modelPath) {
-    const auto config = ConfigManager::GetSingleton()->GetConfig(modelPath);
-    REQUIRE(config.has_value());
-    REQUIRE(config->rotation.HasValues());
-    return config->rotation;
+float GetZoom(std::string_view a_modelPath) {
+    const auto config = Unwrap(ConfigManager::GetSingleton()->GetConfig(a_modelPath));
+    return Unwrap(config.zoom);
+}
+
+RotationOverride GetRotation(std::string_view a_modelPath) {
+    const auto config = Unwrap(ConfigManager::GetSingleton()->GetConfig(a_modelPath));
+    REQUIRE(config.rotation.HasValues());
+    return config.rotation;
 }
 }
 
@@ -156,11 +161,9 @@ TEST_CASE("ConfigManager loads rotation overrides", "[config-manager]") {
     CHECK(manager->GetConfigCount() == 1);
 
     const auto rotation = GetRotation(R"(meshes/items/ring_go.nif)");
-    REQUIRE(rotation.x.has_value());
-    CHECK(*rotation.x == Catch::Approx(15.0F));
+    CHECK(Unwrap(rotation.x) == Catch::Approx(15.0F));
     CHECK_FALSE(rotation.y.has_value());
-    REQUIRE(rotation.z.has_value());
-    CHECK(*rotation.z == Catch::Approx(-90.0F));
+    CHECK(Unwrap(rotation.z) == Catch::Approx(-90.0F));
 }
 
 TEST_CASE("ConfigManager lets rotationDegrees alias overlay rotation", "[config-manager]") {
@@ -187,12 +190,9 @@ TEST_CASE("ConfigManager lets rotationDegrees alias overlay rotation", "[config-
     REQUIRE(manager->Load(tempDir.Path()));
 
     const auto rotation = GetRotation(R"(meshes/items/ring_go.nif)");
-    REQUIRE(rotation.x.has_value());
-    CHECK(*rotation.x == Catch::Approx(15.0F));
-    REQUIRE(rotation.y.has_value());
-    CHECK(*rotation.y == Catch::Approx(45.0F));
-    REQUIRE(rotation.z.has_value());
-    CHECK(*rotation.z == Catch::Approx(90.0F));
+    CHECK(Unwrap(rotation.x) == Catch::Approx(15.0F));
+    CHECK(Unwrap(rotation.y) == Catch::Approx(45.0F));
+    CHECK(Unwrap(rotation.z) == Catch::Approx(90.0F));
 }
 
 TEST_CASE("ConfigManager keeps loading after invalid JSON files", "[config-manager]") {
@@ -253,11 +253,9 @@ TEST_CASE("ConfigManager ignores invalid preview fields and keeps valid fields",
     REQUIRE(manager->Load(tempDir.Path()));
     CHECK(manager->GetConfigCount() == 1);
 
-    const auto config = manager->GetConfig(R"(meshes/items/ring_go.nif)");
-    REQUIRE(config.has_value());
-    CHECK_FALSE(config->zoom.has_value());
-    REQUIRE(config->rotation.x.has_value());
-    CHECK(*config->rotation.x == Catch::Approx(35.0F));
+    const auto config = Unwrap(manager->GetConfig(R"(meshes/items/ring_go.nif)"));
+    CHECK_FALSE(config.zoom.has_value());
+    CHECK(Unwrap(config.rotation.x) == Catch::Approx(35.0F));
 }
 
 TEST_CASE("ConfigManager resolves duplicate exact configs by sorted file order", "[config-manager]") {

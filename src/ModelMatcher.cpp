@@ -91,13 +91,13 @@ std::string NormalizeModelPath(std::string_view a_path) {
 }
 
 ModelPattern::ModelPattern(std::string a_pattern)
-    : pattern_(std::move(a_pattern))
-    , hasWildcard_(pattern_.contains('*')) {}
+    : _pattern(std::move(a_pattern))
+    , _hasWildcard(_pattern.contains('*')) {}
 
 bool ModelPattern::HasWildcard() const noexcept {
-    return hasWildcard_;
+    return _hasWildcard;
 }
 
 bool ModelPattern::Matches(std::string_view a_modelPath) const noexcept {
-    return hasWildcard_ ? WildcardMatches(pattern_, a_modelPath) : pattern_ == a_modelPath;
+    return _hasWildcard ? WildcardMatches(_pattern, a_modelPath) : _pattern == a_modelPath;
 }

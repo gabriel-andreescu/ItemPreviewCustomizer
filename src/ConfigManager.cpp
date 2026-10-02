@@ -63,26 +63,26 @@ bool ConfigManager::Load() {
 }
 
 bool ConfigManager::Load(const std::filesystem::path& a_configFolder) {
-    std::unique_lock const lock(configMutex_);
+    std::unique_lock const lock(_configMutex);
 
-    exactConfigs_.clear();
-    wildcardConfigs_.clear();
-    foundFileCount_ = 0;
-    parsedFileCount_ = 0;
-    failedFileCount_ = 0;
-    skippedEntryCount_ = 0;
+    _exactConfigs.clear();
+    _wildcardConfigs.clear();
+    _foundFileCount = 0;
+    _parsedFileCount = 0;
+    _failedFileCount = 0;
+    _skippedEntryCount = 0;
 
     clib_util::Timer timer;
     timer.start();
 
     const auto files = CollectConfigFiles(a_configFolder);
-    foundFileCount_ = files.size();
+    _foundFileCount = files.size();
 
     for (const auto& file : files) {
         if (ReadConfigFile(file)) {
-            ++parsedFileCount_;
+            ++_parsedFileCount;
         } else {
-            ++failedFileCount_;
+            ++_failedFileCount;
         }
     }
 
@@ -90,11 +90,11 @@ bool ConfigManager::Load(const std::filesystem::path& a_configFolder) {
 
     SKSE::log::info(
         "Config load complete | files_found={} | files_parsed={} | files_failed={} | configs={} | skipped={} | time={}ms",
-        foundFileCount_,
-        parsedFileCount_,
-        failedFileCount_,
+        _foundFileCount,
+        _parsedFileCount,
+        _failedFileCount,
         GetConfigCountUnlocked(),
-        skippedEntryCount_,
+        _skippedEntryCount,
         timer.duration_ms()
     );
 
@@ -107,13 +107,13 @@ std::optional<PreviewConfig> ConfigManager::GetConfig(std::string_view a_path) c
         return std::nullopt;
     }
 
-    std::shared_lock const lock(configMutex_);
+    std::shared_lock const lock(_configMutex);
 
-    if (const auto match = exactConfigs_.find(modelPath); match != exactConfigs_.end()) {
+    if (const auto match = _exactConfigs.find(modelPath); match != _exactConfigs.end()) {
         return match->second.preview;
     }
 
-    for (const auto& wildcardConfig : std::views::reverse(wildcardConfigs_)) {
+    for (const auto& wildcardConfig : std::views::reverse(_wildcardConfigs)) {
         if (wildcardConfig.pattern.Matches(modelPath)) {
             return wildcardConfig.preview;
         }
@@ -123,12 +123,12 @@ std::optional<PreviewConfig> ConfigManager::GetConfig(std::string_view a_path) c
 }
 
 std::size_t ConfigManager::GetConfigCount() const {
-    std::shared_lock const lock(configMutex_);
+    std::shared_lock const lock(_configMutex);
     return GetConfigCountUnlocked();
 }
 
 std::size_t ConfigManager::GetConfigCountUnlocked() const noexcept {
-    return exactConfigs_.size() + wildcardConfigs_.size();
+    return _exactConfigs.size() + _wildcardConfigs.size();
 }
 
 std::vector<std::filesystem::path> ConfigManager::CollectConfigFiles(const std::filesystem::path& a_configFolder) {
@@ -235,13 +235,13 @@ void ConfigManager::AddEntry(
     }
 
     if (!preview.HasValues()) {
-        ++skippedEntryCount_;
+        ++_skippedEntryCount;
         SKSE::log::warn("Skipping config entry with no preview fields | path={} | index={}", a_path.string(), a_index);
         return;
     }
 
     if (a_entry.models.empty()) {
-        ++skippedEntryCount_;
+        ++_skippedEntryCount;
         SKSE::log::warn("Skipping config entry with no models | path={} | index={}", a_path.string(), a_index);
         return;
     }
@@ -249,14 +249,14 @@ void ConfigManager::AddEntry(
     for (const auto& rawModel : a_entry.models) {
         auto model = NormalizeModelPath(rawModel);
         if (model.empty()) {
-            ++skippedEntryCount_;
+            ++_skippedEntryCount;
             SKSE::log::warn("Skipping empty model path | path={} | index={}", a_path.string(), a_index);
             continue;
         }
 
         ModelPattern pattern {model};
         if (pattern.HasWildcard()) {
-            wildcardConfigs_.push_back(
+            _wildcardConfigs.push_back(
                 WildcardConfig {
                     .pattern = std::move(pattern),
                     .preview = preview,
@@ -265,7 +265,7 @@ void ConfigManager::AddEntry(
             continue;
         }
 
-        if (const auto existing = exactConfigs_.find(model); existing != exactConfigs_.end()) {
+        if (const auto existing = _exactConfigs.find(model); existing != _exactConfigs.end()) {
             SKSE::log::info(
                 "Overriding exact model config | model={} | old={} | new={}",
                 model,
@@ -274,7 +274,7 @@ void ConfigManager::AddEntry(
             );
         }
 
-        exactConfigs_.insert_or_assign(
+        _exactConfigs.insert_or_assign(
             std::move(model),
             StoredConfig {
                 .preview = preview,

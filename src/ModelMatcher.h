@@ -13,6 +13,6 @@ public:
     [[nodiscard]] bool Matches(std::string_view a_modelPath) const noexcept;
 
 private:
-    std::string pattern_;
-    bool hasWildcard_ {false};
+    std::string _pattern;
+    bool _hasWildcard {false};
 };

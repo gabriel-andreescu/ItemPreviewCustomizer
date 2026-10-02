@@ -44,11 +44,11 @@ private:
     void AddEntry(const ConfigEntry& a_entry, const std::filesystem::path& a_path, std::size_t a_index);
     [[nodiscard]] std::size_t GetConfigCountUnlocked() const noexcept;
 
-    mutable std::shared_mutex configMutex_;
-    std::unordered_map<std::string, StoredConfig> exactConfigs_;
-    std::vector<WildcardConfig> wildcardConfigs_;
-    std::size_t foundFileCount_ {0};
-    std::size_t parsedFileCount_ {0};
-    std::size_t failedFileCount_ {0};
-    std::size_t skippedEntryCount_ {0};
+    mutable std::shared_mutex _configMutex;
+    std::unordered_map<std::string, StoredConfig> _exactConfigs;
+    std::vector<WildcardConfig> _wildcardConfigs;
+    std::size_t _foundFileCount {0};
+    std::size_t _parsedFileCount {0};
+    std::size_t _failedFileCount {0};
+    std::size_t _skippedEntryCount {0};
 };
