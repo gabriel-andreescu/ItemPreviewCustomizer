@@ -1,9 +1,8 @@
-_commit: v0.2.0
+_commit: v0.5.0
 _src_path: https://github.com/gabriel-andreescu/BethesdaModKit.git
 author: GabonZ
-bmk_repository: https://github.com/gabriel-andreescu/BethesdaModKit.git
 components:
-  - native
+- native
 description: Customizes item preview zoom and rotation.
 devbench_api: false
 devbench_tests: false
@@ -14,3 +13,4 @@ native_source: src
 pack_assets: false
 pre_commit: true
 project_name: ItemPreviewCustomizer
+tooling_only: false
